@@ -6,7 +6,7 @@
 ## 安装步骤
 1. 确保已安装 [Tampermonkey](https://www.tampermonkey.net/) 扩展（支持 Chrome、Firefox、Edge 等浏览器）。
 2. 点击以下链接安装脚本：
-   - [安装脚本](https://github.com/LuoRogers/bilibili_jump_and_report_helper/raw/main/bilibili_jump_and_report_helper.js.js)
+   - [安装脚本](https://github.com/LuoRogers/bilibili_jump_and_report_helper/raw/main/bilibili_jump_and_report_helper.js)
 3. 安装完成后，刷新B站视频页面即可使用。
 
 ## 使用方法
