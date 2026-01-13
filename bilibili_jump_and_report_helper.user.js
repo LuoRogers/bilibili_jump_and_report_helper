@@ -11,6 +11,7 @@
 // @grant        GM_xmlhttpRequest
 // @grant        GM_notification
 // @connect      api.bilibili.com
+// @connect      raw.githubusercontent.com
 // ==/UserScript==
 
 (function() {
