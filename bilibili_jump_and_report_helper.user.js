@@ -19,7 +19,7 @@
 
     // 默认配置
     const DEFAULT_CONFIG = {
-        KEYWORDS: ['中配', '中字'],
+        KEYWORDS: ['中配'],
         YOUTUBE_REGEX: /https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)[^\s]+/gi,
         DELAY_TIME: 1500,
         AUTO_JUMP: false,
@@ -159,8 +159,16 @@
                     if (response.status === 200) {
                         const blacklist = JSON.parse(response.responseText);
                         if (Array.isArray(blacklist)) {
-                            // 确保所有UID都是字符串格式
-                            config.UID_BLACKLIST = blacklist.map(uid => String(uid));
+                            // 从对象数组中提取UID字段并确保所有UID都是字符串格式
+                            config.UID_BLACKLIST = blacklist.map(item => {
+                                // 支持两种格式：直接是UID数字/字符串，或者包含uid字段的对象
+                                if (typeof item === 'object' && item !== null && 'uid' in item) {
+                                    return String(item.uid);
+                                } else {
+                                    // 向后兼容：如果是直接的数字/字符串
+                                    return String(item);
+                                }
+                            });
                             console.log('成功加载UID黑名单:', config.UID_BLACKLIST);
                             if (callback) callback(true);
                         } else {
@@ -392,7 +400,7 @@
 
             if (!youtubeMatch || !youtubeMatch[0]) {
                 console.log('未找到YouTube原始链接');
-                if (confirm('此视频命中了关键词或者为黑名单UP主\n但是未找到YouTube原始链接\n无法为您跳转或者举报\n是否回到主页？')) {
+                if (confirm('此视频命中了关键词或者为黑名单UP主\n但是未找到原始视频链接\n无法为您跳转或者举报\n是否回到主页？')) {
                     window.location.href = 'https://www.bilibili.com/';
                 return;
             }}
