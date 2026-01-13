@@ -284,7 +284,7 @@
             }
 
             const aid = bv2av(bv);
-            
+
             // 使用API获取视频信息
             checkVideoInfo(aid, function(videoInfo) {
                 if (!videoInfo) {
@@ -295,7 +295,7 @@
                 const youtubeMatch = videoInfo.description.match(config.YOUTUBE_REGEX);
 
                 if (!youtubeMatch || !youtubeMatch[0]) {
-                    alert('无法找到YouTube原始链接');
+                    alert('无法找到原视频链接，无法为您举报');
                     return;
                 }
 
@@ -319,9 +319,9 @@
         });
 
         // 查看当前UID黑名单
-        GM_registerMenuCommand(`查看当前UID黑名单 (${config.UID_BLACKLIST.length}个)`, function() {
-            const blacklistStr = config.UID_BLACKLIST.length > 0 
-                ? config.UID_BLACKLIST.join(', ')
+        GM_registerMenuCommand(`查看当前UID黑名单`, function() {
+            const blacklistStr = config.UID_BLACKLIST.length > 0
+                ? config.UID_BLACKLIST.join('\n')
                 : '黑名单为空（请先使用"从GitHub加载UID黑名单"菜单项加载）';
             alert(`当前UID黑名单 (${config.UID_BLACKLIST.length}个):\n\n${blacklistStr}`);
         });
@@ -350,7 +350,7 @@
         }
 
         const aid = bv2av(bv);
-        
+
         // 检查视频信息（版权、UP主UID和简介）
         checkVideoInfo(aid, function(videoInfo) {
             if (!videoInfo) {
@@ -365,7 +365,7 @@
                 const containsKeyword = config.KEYWORDS.some(keyword =>
                     document.title.includes(keyword)
                 );
-                
+
                 if (!containsKeyword) {
                     console.log('标题不包含关键词且UP主不在黑名单中，跳过处理');
                     return;
@@ -374,7 +374,7 @@
 
             // 判断是否为需要处理的视频：原创作品或UP主在黑名单中
             const shouldProcess = videoInfo.isOriginal || videoInfo.isBlacklisted;
-            
+
             if (!shouldProcess) {
                 console.log('视频不是原创作品且UP主不在黑名单中，跳过处理');
                 return;
@@ -392,8 +392,10 @@
 
             if (!youtubeMatch || !youtubeMatch[0]) {
                 console.log('未找到YouTube原始链接');
+                if (confirm('此视频命中了关键词或者为黑名单UP主\n但是未找到YouTube原始链接\n无法为您跳转或者举报\n是否回到主页？')) {
+                    window.location.href = 'https://www.bilibili.com/';
                 return;
-            }
+            }}
 
             const youtubeUrl = youtubeMatch[0];
 
@@ -407,7 +409,7 @@
                 if (config.AUTO_JUMP) {
                     window.location.href = youtubeUrl;
                 } else {
-                    if (confirm('检测到YouTube原始链接，是否要跳转？')) {
+                    if (confirm('本视频为AI中配视频\n在简介找到了YouTube原始链接\n是否要跳转？')) {
                         window.location.href = youtubeUrl;
                     }
                 }
