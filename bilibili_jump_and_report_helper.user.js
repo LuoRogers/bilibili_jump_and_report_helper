@@ -605,7 +605,7 @@
                     return;
                 } else {
                     // 非黑名单UP主，只是标题匹配关键词的情况
-                    if (confirm('此视频命中了关键词\n但是未找到原始视频链接，如果您觉得这个UP主是正常的\n那么您可以给他加到白名单中\n确定：回到B站主页\n取消：留在此处')) {
+                    if (confirm('此视频命中了关键词\n但是未找到原始视频链接\n如果您觉得这个UP主是正常的\n那么您可以给他加到白名单中\n确定：回到B站主页\n取消：留在此处')) {
                         window.location.href = 'https://www.bilibili.com/';
                     }
                     return;
