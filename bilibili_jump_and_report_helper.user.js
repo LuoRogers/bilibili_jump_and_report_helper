@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         B站中配视频跳转与举报助手
 // @namespace    http://tampermonkey.net/
-// @version      3.3
+// @version      3.5
 // @description  自动检测B站中配视频，提供跳转和举报功能，新增UID黑名单检查（原创作品或黑名单UP主）
 // @author       YourName
 // @match        https://www.bilibili.com/video/BV*
@@ -24,7 +24,8 @@
         DELAY_TIME: 1500,
         AUTO_JUMP: false,
         AUTO_REPORT: false,
-        REPORT_DESCRIPTION: "转载投自制，原视频链接为：${YOUTUBE_URL}"
+        REPORT_DESCRIPTION: "转载投自制，原视频链接为：${YOUTUBE_URL}",
+        REPORT_HISTORY: [] // 举报历史记录
     };
 
     // 获取配置
@@ -35,6 +36,7 @@
         AUTO_JUMP: GM_getValue('AUTO_JUMP', DEFAULT_CONFIG.AUTO_JUMP),
         AUTO_REPORT: GM_getValue('AUTO_REPORT', DEFAULT_CONFIG.AUTO_REPORT),
         REPORT_DESCRIPTION: GM_getValue('REPORT_DESCRIPTION', DEFAULT_CONFIG.REPORT_DESCRIPTION),
+        REPORT_HISTORY: GM_getValue('REPORT_HISTORY', DEFAULT_CONFIG.REPORT_HISTORY), // 举报历史记录
         UID_BLACKLIST: [], // 将从文件加载
         UID_WHITELIST: GM_getValue('UID_WHITELIST', []), // 用户本地白名单
         FULL_BLACKLIST: [] // 完整的黑名单对象数组
@@ -70,6 +72,17 @@
         const bv = getCurrentBV();
         if (!bv) {
             console.error('无法获取当前视频BV号');
+            return;
+        }
+
+        // 检查是否已经举报过此视频
+        if (config.REPORT_HISTORY.includes(bv)) {
+            console.log(`视频 ${bv} 已经在举报历史中，跳过重复举报`);
+            GM_notification({
+                title: "跳过重复举报",
+                text: `视频 ${bv} 已经在举报历史中`,
+                timeout: 3000
+            });
             return;
         }
 
@@ -118,6 +131,13 @@
                 try {
                     const result = JSON.parse(response.responseText);
                     if (result.code === 0) {
+                        // 将BV添加到举报历史中
+                        if (!config.REPORT_HISTORY.includes(bv)) {
+                            config.REPORT_HISTORY.push(bv);
+                            GM_setValue('REPORT_HISTORY', config.REPORT_HISTORY);
+                            console.log(`已将 ${bv} 添加到举报历史`);
+                        }
+                        
                         GM_notification({
                             title: "举报成功",
                             text: `已成功举报视频 BV${bv}`,
@@ -532,6 +552,7 @@
                 GM_setValue('AUTO_JUMP', DEFAULT_CONFIG.AUTO_JUMP);
                 GM_setValue('AUTO_REPORT', DEFAULT_CONFIG.AUTO_REPORT);
                 GM_setValue('REPORT_DESCRIPTION', DEFAULT_CONFIG.REPORT_DESCRIPTION);
+                GM_setValue('REPORT_HISTORY', DEFAULT_CONFIG.REPORT_HISTORY);
                 alert('所有设置已重置为默认值');
                 location.reload();
             }
