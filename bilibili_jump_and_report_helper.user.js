@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         B站中配视频跳转与举报助手
 // @namespace    http://tampermonkey.net/
-// @version      3.5
-// @description  自动检测B站中配视频，提供跳转和举报功能，新增UID黑名单检查（原创作品或黑名单UP主）
+// @version      3.6
+// @description  自动检测B站中配视频，提供跳转和举报功能，新增UID黑名单检查（原创作品或黑名单UP主），新增主页黑名单UP主视频屏蔽功能
 // @author       YourName
 // @match        https://www.bilibili.com/video/BV*
+// @match        https://www.bilibili.com/
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -25,7 +26,8 @@
         AUTO_JUMP: false,
         AUTO_REPORT: false,
         REPORT_DESCRIPTION: "转载投自制，原视频链接为：${YOUTUBE_URL}",
-        REPORT_HISTORY: [] // 举报历史记录
+        REPORT_HISTORY: [], // 举报历史记录
+        HOMEPAGE_BLOCK_MODE: 'blur' // 主页屏蔽模式：'off'=关闭, 'blur'=模糊化, 'remove'=移除
     };
 
     // 获取配置
@@ -37,6 +39,7 @@
         AUTO_REPORT: GM_getValue('AUTO_REPORT', DEFAULT_CONFIG.AUTO_REPORT),
         REPORT_DESCRIPTION: GM_getValue('REPORT_DESCRIPTION', DEFAULT_CONFIG.REPORT_DESCRIPTION),
         REPORT_HISTORY: GM_getValue('REPORT_HISTORY', DEFAULT_CONFIG.REPORT_HISTORY), // 举报历史记录
+        HOMEPAGE_BLOCK_MODE: GM_getValue('HOMEPAGE_BLOCK_MODE', DEFAULT_CONFIG.HOMEPAGE_BLOCK_MODE), // 主页屏蔽模式
         UID_BLACKLIST: [], // 将从文件加载
         UID_WHITELIST: GM_getValue('UID_WHITELIST', []), // 用户本地白名单
         FULL_BLACKLIST: [] // 完整的黑名单对象数组
@@ -310,6 +313,20 @@
         return false;
     }
 
+    // 获取主页屏蔽模式文本
+    function getHomepageBlockModeText(mode) {
+        switch (mode) {
+            case 'off':
+                return '关闭';
+            case 'blur':
+                return '模糊化';
+            case 'remove':
+                return '移除';
+            default:
+                return '未知';
+        }
+    }
+
     // 注册菜单命令
     function registerMenuCommands() {
         // 切换自动跳转
@@ -543,6 +560,20 @@
             }
         });
 
+        // 切换主页屏蔽模式
+        GM_registerMenuCommand(`主页屏蔽模式: ${getHomepageBlockModeText(config.HOMEPAGE_BLOCK_MODE)}`, function () {
+            const modes = ['off', 'blur', 'remove'];
+            const currentIndex = modes.indexOf(config.HOMEPAGE_BLOCK_MODE);
+            const nextIndex = (currentIndex + 1) % modes.length;
+            const newMode = modes[nextIndex];
+            
+            GM_setValue('HOMEPAGE_BLOCK_MODE', newMode);
+            config.HOMEPAGE_BLOCK_MODE = newMode;
+            
+            alert(`主页屏蔽模式已切换为: ${getHomepageBlockModeText(newMode)}`);
+            location.reload();
+        });
+
         // 重置设置
         GM_registerMenuCommand('重置所有设置', function () {
             if (confirm('确定要重置所有设置吗？')) {
@@ -553,6 +584,7 @@
                 GM_setValue('AUTO_REPORT', DEFAULT_CONFIG.AUTO_REPORT);
                 GM_setValue('REPORT_DESCRIPTION', DEFAULT_CONFIG.REPORT_DESCRIPTION);
                 GM_setValue('REPORT_HISTORY', DEFAULT_CONFIG.REPORT_HISTORY);
+                GM_setValue('HOMEPAGE_BLOCK_MODE', DEFAULT_CONFIG.HOMEPAGE_BLOCK_MODE);
                 alert('所有设置已重置为默认值');
                 location.reload();
             }
@@ -653,16 +685,231 @@
         });
     }
 
-    // 初始化
-    registerMenuCommands();
-    // 自动加载黑名单，然后执行主功能
-    loadBlacklistFromGitHub(function (success) {
-        if (success) {
-            console.log('UID黑名单加载成功，开始执行主功能');
-            mainFunction();
-        } else {
-            console.log('UID黑名单加载失败，使用空黑名单执行主功能');
-            mainFunction();
+    // 主页视频屏蔽功能
+    function blockHomepageVideos() {
+        console.log('开始执行主页视频屏蔽功能，当前模式:', config.HOMEPAGE_BLOCK_MODE);
+        
+        // 检查是否在主页
+        if (!window.location.href.startsWith('https://www.bilibili.com/')) {
+            console.log('不在主页，跳过主页视频屏蔽');
+            return;
         }
-    });
+        
+        // 如果模式是关闭，直接返回
+        if (config.HOMEPAGE_BLOCK_MODE === 'off') {
+            console.log('主页屏蔽模式为关闭，跳过处理');
+            return;
+        }
+        
+        // 获取所有视频卡片元素
+        const videoCards = document.querySelectorAll('.feed-card');
+        console.log(`找到 ${videoCards.length} 个视频卡片`);
+        
+        if (videoCards.length === 0) {
+            console.log('未找到视频卡片，可能页面尚未加载完成，将在1秒后重试');
+            setTimeout(blockHomepageVideos, 1000);
+            return;
+        }
+        
+        // 从完整黑名单中提取UP主名字列表
+        const blacklistNames = config.FULL_BLACKLIST
+            .filter(item => item && typeof item === 'object' && 'name' in item)
+            .map(item => item.name.trim());
+        
+        console.log('黑名单UP主名字列表:', blacklistNames);
+        
+        let blockedCount = 0;
+        
+        // 遍历每个视频卡片
+        videoCards.forEach((card, index) => {
+            // 查找作者名字元素
+            const authorElement = card.querySelector('.bili-video-card__info--author');
+            if (!authorElement) {
+                console.log(`卡片 ${index}: 未找到作者名字元素`);
+                return;
+            }
+            
+            const authorName = authorElement.textContent.trim();
+            console.log(`卡片 ${index}: 作者名字: "${authorName}"`);
+            
+            // 检查作者名字是否在黑名单中
+            const isBlacklisted = blacklistNames.some(name => 
+                authorName.includes(name) || name.includes(authorName)
+            );
+            
+            if (isBlacklisted) {
+                console.log(`卡片 ${index}: 作者 "${authorName}" 在黑名单中，进行屏蔽`);
+                
+                // 根据模式处理
+                if (config.HOMEPAGE_BLOCK_MODE === 'remove') {
+                    // 移除模式：直接移除卡片
+                    console.log(`移除卡片 ${index}: 作者 "${authorName}"`);
+                    card.style.display = 'none';
+                    blockedCount++;
+                } else if (config.HOMEPAGE_BLOCK_MODE === 'blur') {
+                    // 模糊化模式：添加模糊效果和屏蔽提示
+                    console.log(`模糊化卡片 ${index}: 作者 "${authorName}"`);
+                    
+                    // 确保卡片有相对定位以便绝对定位覆盖层
+                    if (window.getComputedStyle(card).position === 'static') {
+                        card.style.position = 'relative';
+                    }
+                    
+                    // 创建一个包装容器来应用模糊效果
+                    const blurWrapper = document.createElement('div');
+                    blurWrapper.style.filter = 'blur(5px)';
+                    blurWrapper.style.opacity = '0.5';
+                    blurWrapper.style.width = '100%';
+                    blurWrapper.style.height = '100%';
+                    blurWrapper.style.position = 'relative';
+                    blurWrapper.style.zIndex = '1';
+                    
+                    // 将卡片的所有子节点移动到模糊包装器中
+                    while (card.firstChild) {
+                        blurWrapper.appendChild(card.firstChild);
+                    }
+                    
+                    // 将模糊包装器添加回卡片
+                    card.appendChild(blurWrapper);
+                    
+                    // 添加屏蔽提示（不模糊）
+                    const blockOverlay = document.createElement('div');
+                    blockOverlay.style.position = 'absolute';
+                    blockOverlay.style.top = '0';
+                    blockOverlay.style.left = '0';
+                    blockOverlay.style.width = '100%';
+                    blockOverlay.style.height = '100%';
+                    blockOverlay.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                    blockOverlay.style.color = 'white';
+                    blockOverlay.style.display = 'flex';
+                    blockOverlay.style.flexDirection = 'column';
+                    blockOverlay.style.justifyContent = 'center';
+                    blockOverlay.style.alignItems = 'center';
+                    blockOverlay.style.zIndex = '1000';
+                    blockOverlay.style.padding = '10px';
+                    blockOverlay.style.boxSizing = 'border-box';
+                    blockOverlay.style.textAlign = 'center';
+                    blockOverlay.style.borderRadius = '8px';
+                    blockOverlay.style.pointerEvents = 'none'; // 防止屏蔽提示干扰点击事件
+                    
+                    blockOverlay.innerHTML = `
+                        <div style="font-size: 16px; font-weight: bold; margin-bottom: 8px; pointer-events: auto;">
+                            ⚠️ 已屏蔽
+                        </div>
+                        <div style="font-size: 14px; margin-bottom: 4px; pointer-events: auto;">
+                            作者: ${authorName}
+                        </div>
+                        <div style="font-size: 12px; opacity: 0.8; pointer-events: auto;">
+                            该UP主在黑名单中
+                        </div>
+                    `;
+                    
+                    // 移除可能已存在的覆盖层
+                    const existingOverlay = card.querySelector('.bili-block-overlay');
+                    if (existingOverlay) {
+                        existingOverlay.remove();
+                    }
+                    
+                    blockOverlay.className = 'bili-block-overlay';
+                    card.appendChild(blockOverlay);
+                    
+                    blockedCount++;
+                }
+            } else {
+                console.log(`卡片 ${index}: 作者 "${authorName}" 不在黑名单中`);
+            }
+        });
+        
+        console.log(`主页视频屏蔽完成，共处理了 ${blockedCount} 个视频`);
+        
+        // 监听页面变化（B站主页是单页应用，内容可能会动态加载）
+        observePageChanges();
+    }
+    
+    // 监听页面变化
+    function observePageChanges() {
+        // 使用MutationObserver监听DOM变化
+        const observer = new MutationObserver(function(mutations) {
+            let shouldCheck = false;
+            
+            for (const mutation of mutations) {
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    // 检查新增的节点中是否有视频卡片
+                    for (const node of mutation.addedNodes) {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            if (node.querySelector('.feed-card') || 
+                                (node.classList && node.classList.contains('feed-card'))) {
+                                shouldCheck = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (shouldCheck) break;
+            }
+            
+            if (shouldCheck) {
+                console.log('检测到页面内容变化，重新检查视频卡片');
+                // 防抖处理，避免频繁调用
+                clearTimeout(window._blockHomepageDebounce);
+                window._blockHomepageDebounce = setTimeout(blockHomepageVideos, 500);
+            }
+        });
+        
+        // 开始观察整个文档的变化
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        console.log('已启动页面变化监听');
+    }
+    
+    // 根据当前URL决定执行哪个功能
+    function init() {
+        registerMenuCommands();
+        
+        // 自动加载黑名单
+        loadBlacklistFromGitHub(function (success) {
+            if (success) {
+                console.log('UID黑名单加载成功');
+                
+                // 根据当前URL决定执行哪个功能
+                const currentUrl = window.location.href;
+                
+                if (currentUrl.includes('/video/BV')) {
+                    // 视频页面：执行原来的主功能
+                    console.log('当前在视频页面，执行主功能');
+                    mainFunction();
+                } else if (currentUrl.startsWith('https://www.bilibili.com/')) {
+                    // 主页：执行主页视频屏蔽功能
+                    console.log('当前在主页，执行主页视频屏蔽功能');
+                    
+                    // 等待页面加载完成
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', blockHomepageVideos);
+                    } else {
+                        // 如果页面已经加载完成，直接执行
+                        setTimeout(blockHomepageVideos, 1000);
+                    }
+                } else {
+                    console.log('当前页面不在处理范围内');
+                }
+            } else {
+                console.log('UID黑名单加载失败');
+                
+                // 即使黑名单加载失败，也根据URL执行相应功能
+                const currentUrl = window.location.href;
+                
+                if (currentUrl.includes('/video/BV')) {
+                    console.log('当前在视频页面，使用空黑名单执行主功能');
+                    mainFunction();
+                }
+            }
+        });
+    }
+
+    // 初始化
+    init();
 })();
